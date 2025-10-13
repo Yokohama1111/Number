@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+ <title>QRコードリーダー</title>
+ <style>
+   /* body, html は display: flex をやめる */
+body, html {
+ margin: 0;
+ padding: 0;
+ height: 100%;
+ font-family: Arial, sans-serif;
+}
+
+
+/* startScreen には中央寄せではなく relative のみ */
+#startScreen {
+ position: relative;
+ width: 100%;
+ height: 100vh; /* ビューポート全体を確保 */
+}
+
+
+/* 中央に表示する要素だけここで中央揃え */
+.centerContent {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ height: 100%;
+}
+
+
+/* ボタンのグループ横並び */
+.buttonGroup {
+ display: flex;
+ justify-content: center;
+ gap: 20px;
+}
+
+
+/* ボタン共通スタイル */
+#arrivalButton, #departureButton {
+ width: 120px;
+ height: 120px;
+ background-color: #007bff;
+ color: white;
+ border: none;
+ font-size: 32px;
+ font-weight: bold;
+ cursor: pointer;
+ border-radius: 20px;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ margin: 10px;
+}
+
+
+/* タイトルも中央寄せ */
+h1 {
+ font-size: 2.5rem;
+ margin-bottom: 20px;
+ text-align: center;
+}
+
+
+/* スキャナー画面 */
+#scanner {
+   display: flex; /* ← これが必要 */
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ height: 100vh;
+ text-align: center;
+}
+
+
+#resultScreen {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center; /* ←中央寄せに変更 */
+ height: 100vh;
+ text-align: center;
+ gap: 20px; /* 要素間に余白 */
+}
+
+
+
+
+#backButton {
+ margin: 20px auto 0 auto;  /* 上:20px、左右:自動中央寄せ */
+ width: 200px;
+ padding: 10px;
+ font-size: 18px;
+ border-radius: 10px;
+ cursor: pointer;
+ display: block;
+}
+
+
+   video {
+     width: 320px;
+     height: 240px;
+     border: 4px solid #007bff;
+     border-radius: 10px;
+     object-fit: cover;
+     display: block;
+     margin: 0 auto;
+   }
+
+
+   #resultList li {
+ max-width: 90vw; /* 画面幅の90%以内に制限 */
+ white-space: normal;
+ overflow: visible;
+ text-overflow: clip;
+ font-size: 2rem;
+ font-weight: bold;
+ margin: 10px 0;
+ word-break: break-word;
+}
+
+
+
+
+   button {
+     padding: 10px 20px;
+     font-size: 18px;
+     margin: 10px;
+     cursor: pointer;
+   }
+
+
+   #downloadButton, #deleteButton {
+  background-color: transparent;  /* 背景透明 */
+  color: #6c757d;                  /* グレー文字 */
+  border: 2px solid #6c757d;      /* グレー枠 */
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+#downloadButton:hover, #deleteButton:hover {
+  background-color: #f1f1f1;      /* ホバー時の薄いグレー背景 */
+}
+
+
+   /* スキャン画面のテキスト中央寄せ */
+
+
+
+
+   #resultList {
+ list-style: none;
+ padding: 0;
+ margin: 0 auto;  /* 左右autoで中央寄せ */
+ width: fit-content; /* 内容に応じた幅 */
+ max-width: 900px;
+ text-align: center; /* 中央寄せ */
+}
+
+.scannerContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center; /* ← これが重要 */
+  height: 100vh;            /* ← 高さ指定 */
+  gap: 20px;
+}
+
+ </style>
+</head>
+<body>
+ <div id="startScreen">
+   <!-- 右上のボタンは外に出す（absolute位置指定のまま） -->
+   <div style="position: absolute; top: 20px; right: 20px;">
+     <button id="downloadButton">ダウンロード</button>
+     <button id="deleteButton">完了</button>
+   </div>
+    <!-- 中央に配置したい部分をまとめる -->
+   <div class="centerContent">
+     <h1>登校記録</h1>
+     <div class="buttonGroup">
+       <button id="arrivalButton">登校</button>
+       <button id="departureButton">下校</button>
+     </div>
+   </div>
+ </div>
+
+
+ <div id="scanner">
+  <div class="scannerContent">
+    <h2>QRコードをかざしてください</h2>
+    <div style="position: relative; display: flex; justify-content: center;">
+      <video id="preview" playsinline></video>
+      <div style="position: absolute; width: 80px; height: 80px; border: 2px dashed red; top: 80px;"></div>
+    </div>
+    <p id="scanResult"></p>
+    <button id="backToStartButton">戻る</button>
+  </div>
+</div>
+
+<div id="resultScreen">
+  <div class="centerContent">
+    <h2 id="recordTypeText">記録しました</h2>
+    <ul id="resultList"></ul>
+    <button id="backButton">トップ画面へ戻る</button>
+  </div>
+</div>
+
+
+ <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
+ <script>
+   const arrivalButton = document.getElementById("arrivalButton");
+   const departureButton = document.getElementById("departureButton");
+   const backButton = document.getElementById("backButton");
+   const backToStartButton = document.getElementById("backToStartButton");
+   const startScreen = document.getElementById("startScreen");
+   const scanner = document.getElementById("scanner");
+   const resultScreen = document.getElementById("resultScreen");
+   const video = document.getElementById("preview");
+   const resultList = document.getElementById("resultList");
+   const recordTypeText = document.getElementById("recordTypeText");
+
+
+   let canvasElement = document.createElement("canvas");
+   let canvas = canvasElement.getContext("2d");
+
+
+   let attendanceRecords = JSON.parse(localStorage.getItem("attendanceRecords")) || [];
+   let currentType = "";
+   let isScanning = false;
+
+
+   arrivalButton.addEventListener("click", () => startScan("登校"));
+   departureButton.addEventListener("click", () => startScan("下校"));
+
+
+   function startScan(type) {
+     currentType = type;
+     startScreen.style.display = "none";
+     scanner.style.display = "block";
+
+
+     navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+       .then((stream) => {
+         video.srcObject = stream;
+         video.setAttribute("playsinline", true);
+         video.play();
+         requestAnimationFrame(scanQRCode);
+       })
+       .catch((error) => {
+         console.error("カメラの起動に失敗しました:", error);
+         alert("カメラが利用できません。");
+       });
+   }
+
+
+   function scanQRCode() {
+     if (video.readyState === video.HAVE_ENOUGH_DATA && !isScanning) {
+       isScanning = true;
+
+
+       canvasElement.height = video.videoHeight;
+       canvasElement.width = video.videoWidth;
+       canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
+
+
+       const cropWidth = canvasElement.width * 0.5;
+       const cropHeight = canvasElement.height * 0.5;
+       const cropX = (canvasElement.width - cropWidth) / 2;
+       const cropY = (canvasElement.height - cropHeight) / 2;
+
+
+       let imageData = canvas.getImageData(cropX, cropY, cropWidth, cropHeight);
+       let code = jsQR(imageData.data, cropWidth, cropHeight);
+
+
+       if (code) {
+         const id = code.data;
+         const timestamp = new Date().toLocaleString();
+         const type = currentType;
+
+
+         if (!/^\d{7}$/.test(id)) {
+           alert("指定されたQRコードをかざしてください！（7桁）");
+           isScanning = false;
+           return;
+         }
+
+
+         attendanceRecords.push({ id, timestamp, type });
+         localStorage.setItem("attendanceRecords", JSON.stringify(attendanceRecords));
+
+
+         resultList.innerHTML = "";
+         const listItem = document.createElement("li");
+         listItem.textContent = `学籍番号: ${id}, 時間: ${timestamp}, 種別: ${type}`;
+         resultList.appendChild(listItem);
+
+
+         recordTypeText.textContent = `${type}を記録しました`;
+
+
+         // 外部送信なし
+         // sendDataToGoogleSheets(id, timestamp, type);
+
+
+         scanner.style.display = "none";
+         resultScreen.style.display = "block";
+
+
+         if (video.srcObject) {
+           video.srcObject.getTracks().forEach(track => track.stop());
+           video.srcObject = null;
+         }
+       }
+
+
+       setTimeout(() => {
+         isScanning = false;
+       }, 500);
+     }
+
+
+     requestAnimationFrame(scanQRCode);
+   }
+
+
+   document.getElementById("downloadButton").addEventListener("click", () => {
+     const password = prompt("パスワードを入力してください");
+     const correctPassword = "yo2025"; // ← 削除と同じでも別でもOK！
+
+
+     if (password === correctPassword) {
+       if (attendanceRecords.length === 0) {
+         alert("記録がありません。");
+         return;
+       }
+
+
+       let csvContent = "学籍番号,時間,種別\n";
+       attendanceRecords.forEach(record => {
+         csvContent += `${record.id},${record.timestamp},${record.type}\n`;
+       });
+
+
+       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+       const url = URL.createObjectURL(blob);
+
+
+       const link = document.createElement("a");
+       link.setAttribute("href", url);
+       link.setAttribute("download", "出席記録.csv");
+       document.body.appendChild(link);
+       link.click();
+       document.body.removeChild(link);
+     } else if (password !== null) {
+       alert("パスワードが間違っています。");
+     }
+   });
+
+
+   backToStartButton.addEventListener("click", () => {
+     scanner.style.display = "none";
+     startScreen.style.display = "block";
+
+
+     if (video.srcObject) {
+       video.srcObject.getTracks().forEach(track => track.stop());
+       video.srcObject = null;
+     }
+     resultList.innerHTML = "";
+   });
+
+
+   backButton.addEventListener("click", () => {
+     resultScreen.style.display = "none";
+     startScreen.style.display = "block";
+     resultList.innerHTML = "";
+
+
+     if (video.srcObject) {
+       video.srcObject.getTracks().forEach(track => track.stop());
+       video.srcObject = null;
+     }
+   });
+
+
+   document.getElementById("deleteButton").addEventListener("click", () => {
+     const password = prompt("パスワードを入力してください");
+     const correctPassword = "yo2025"; // ←自由に変えてOK！
+
+
+     if (password === correctPassword) {
+       const confirmDelete = confirm("本当に全記録を削除しますか？");
+       if (confirmDelete) {
+         localStorage.removeItem("attendanceRecords");
+         attendanceRecords = [];
+         alert("すべての記録を削除しました。");
+       }
+     } else if (password !== null) {
+       alert("パスワードが間違っています。");
+     }
+   });
+ </script>
+</body>
+</html>
+
+
